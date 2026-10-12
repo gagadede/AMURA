@@ -1,0 +1,92 @@
+name: Build AMURA APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download game files
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Prepare Capacitor
+        shell: bash
+        run: |
+          if [ ! -f index.html ]; then
+            echo "ERROR: index.html not found in repository root."
+            exit 1
+          fi
+
+          if [ ! -f package.json ]; then
+            npm init -y
+          fi
+
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+
+      - name: Prepare web game
+        shell: bash
+        run: |
+          mkdir -p www
+
+          find . -maxdepth 1 -mindepth 1 \
+            ! -name .git \
+            ! -name .github \
+            ! -name node_modules \
+            ! -name android \
+            ! -name www \
+            ! -name package.json \
+            ! -name package-lock.json \
+            -exec cp -r {} www/ \;
+
+          cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "com.amura.game",
+            "appName": "AMURA",
+            "webDir": "www"
+          }
+          EOF
+
+      - name: Create Android project
+        shell: bash
+        run: |
+          if [ ! -d android ]; then
+            npx cap add android
+          fi
+
+      - name: Build APK
+        shell: bash
+        run: |
+          npx cap sync android
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AMURA-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
